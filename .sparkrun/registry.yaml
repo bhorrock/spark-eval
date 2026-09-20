@@ -1,0 +1,4 @@
+registries:
+  - name: lab
+    description: Private recipes for the Spark daily driver and its challengers
+    recipes: recipes
