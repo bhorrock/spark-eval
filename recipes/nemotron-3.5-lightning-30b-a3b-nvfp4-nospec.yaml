@@ -1,0 +1,58 @@
+# Identical to nemotron-3.5-lightning-30b-a3b-nvfp4.yaml with the DSpark drafter removed.
+recipe_version: "2"
+model: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+model_revision: bee7596271d1495f6992ae224aefde4410e816b8
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:20260918@sha256:1b0be62c1ccb37f738746cd8fbcec73b46f0c283082a6d46aebf9f19b5747563
+max_nodes: 1
+
+metadata:
+  description: Nemotron 3.5 Lightning 30B-A3B NVFP4, no speculative decoding. Perf A/B twin.
+  maintainer: blaine
+  category: agent
+  model_dtype: nvfp4
+  kv_dtype: fp8
+
+defaults:
+  port: 8001
+  host: 0.0.0.0
+  served_model_name: nemotron-3.5-lightning-30b-a3b
+  tensor_parallel: 1
+  gpu_memory_utilization: 0.40        # lab slot. Exclusive mode: -o gpu_memory_utilization=0.80
+  max_model_len: 131072               # model supports 1M. Held at 128K to match the other candidates.
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  kv_cache_dtype: fp8
+  moe_backend: marlin
+  load_format: instanttensor
+  mamba_backend: flashinfer
+  mamba_ssm_cache_dtype: float16
+  mamba_cache_mode: align
+  mamba_cache_philox_rounds: 5
+  tool_call_parser: qwen3_xml
+  reasoning_parser: nemotron_v3       # built into the image. No plugin file, unlike Nemotron-3-Nano.
+
+command: |
+  vllm serve {model} \
+    --revision {model_revision} \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    -tp {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --moe-backend {moe_backend} \
+    --load-format {load_format} \
+    --mamba-backend {mamba_backend} \
+    --mamba-ssm-cache-dtype {mamba_ssm_cache_dtype} \
+    --mamba-cache-mode {mamba_cache_mode} \
+    --enable-mamba-cache-stochastic-rounding \
+    --mamba-cache-philox-rounds {mamba_cache_philox_rounds} \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --trust-remote-code

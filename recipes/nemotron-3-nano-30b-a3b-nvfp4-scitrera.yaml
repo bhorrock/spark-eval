@@ -1,0 +1,56 @@
+# Same model and revision as the -eugr recipe, on the scitrera image. The point of the
+# pair is to measure what the container contributes.
+#
+# CAVEAT: scitrera/dgx-spark-vllm stopped at 0.17.0 (2026-03-08). The recipe this is based
+# on shipped inside sparkrun 0.0.15 and is no longer in any registry. vLLM 0.17 predates
+# flags the eugr recipe uses, so this one is deliberately conservative:
+#  - no --moe-backend (not confirmed to exist in 0.17; NVFP4 MoE backend is whatever 0.17 picks)
+#  - no --load-format fastsafetensors (not confirmed installed in this image)
+# If bringup fails on an unknown argument, that is this file guessing wrong, not the model.
+# If it is a lot slower than -eugr, that is the expected result and the pair has done its job.
+recipe_version: "2"
+model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4
+model_revision: 6efb4a2a1c1fa277ce7b3df7a1416255011b1c99
+runtime: vllm
+container: scitrera/dgx-spark-vllm:0.17.0-t5@sha256:eb47311d70ae14c7656680a02ae92c0df6ca999ad87be4127fd40fc5ddf9eedd
+max_nodes: 1
+
+metadata:
+  description: Nemotron-3-Nano 30B-A3B NVFP4, scitrera vLLM 0.17.0-t5. Container A/B twin of -eugr.
+  maintainer: blaine
+  category: agent
+  model_dtype: nvfp4
+  kv_dtype: fp8
+
+defaults:
+  port: 8001
+  host: 0.0.0.0
+  served_model_name: nemotron-3-nano-30b-a3b
+  tensor_parallel: 1
+  gpu_memory_utilization: 0.40
+  max_model_len: 131072
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  kv_cache_dtype: fp8
+  tool_call_parser: qwen3_coder
+  reasoning_parser: nano_v3
+  reasoning_parser_file: nano_v3_reasoning_parser.py
+
+command: |
+  vllm serve {model} \
+    --revision {model_revision} \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    -tp {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser-plugin "$(python3 -c 'import sys, huggingface_hub as h; print(h.hf_hub_download(sys.argv[1], sys.argv[2], revision=sys.argv[3]))' {model} {reasoning_parser_file} {model_revision})" \
+    --reasoning-parser {reasoning_parser} \
+    --trust-remote-code

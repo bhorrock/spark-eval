@@ -1,0 +1,48 @@
+# Gate 5. Replace these with 30 to 50 prompts from your real work. Prefer an `exec`
+# check. Where none fits, leave `expect` loose and rely on `spark-eval judge`.
+defaults: {temperature: 0, max_tokens: 4096}
+
+cases:
+  - id: js_chunk_function
+    messages: [{role: user, content: "Write a JavaScript function chunk(arr, n) that splits arr into arrays of length n. The last chunk may be shorter. Throw a RangeError when n < 1. Give one js code block and nothing after it."}]
+    expect:
+      exec:
+        lang: node
+        test: |
+          const assert = require('assert');
+          assert.deepStrictEqual(chunk([1,2,3,4,5], 2), [[1,2],[3,4],[5]]);
+          assert.deepStrictEqual(chunk([], 3), []);
+          assert.throws(() => chunk([1], 0), RangeError);
+
+  - id: py_governance_batcher
+    messages: [{role: user, content: "Write a Python function plan_batches(costs, budget) that takes a list of positive integer costs and packs them, in order, into consecutive batches whose sums do not exceed budget. Return a list of lists. Raise ValueError if any single cost exceeds budget. One python code block only."}]
+    expect:
+      exec:
+        lang: python
+        test: |
+          assert plan_batches([5, 5, 5, 5], 10) == [[5, 5], [5, 5]]
+          assert plan_batches([9, 2, 8, 1, 1], 10) == [[9], [2, 8], [1, 1]]
+          assert plan_batches([], 10) == []
+          try:
+              plan_batches([11], 10); raise SystemExit(1)
+          except ValueError:
+              pass
+
+  - id: suiteql_top_customers
+    messages: [{role: user, content: "Write a SuiteQL query returning the 10 customers with the highest total invoice amount in the last 90 days, with customer id, company name and the total. Use the transaction and customer tables. SQL only."}]
+    expect: {regex: ["(?i)from\\s+transaction", "(?i)join\\s+customer", "(?i)group\\s+by", "(?i)order\\s+by.+desc"], not_contains: ["LIMIT 10"]}
+
+  - id: suitescript_governance_review
+    messages:
+      - role: user
+        content: |
+          Review this SuiteScript 2.1 scheduled script fragment. Name the main production risk in one short paragraph.
+
+          const rs = search.load({id: 'customsearch_open_orders'}).run();
+          rs.each(r => {
+            const so = record.load({type: 'salesorder', id: r.id});
+            so.setValue({fieldId: 'memo', value: 'reviewed'});
+            so.save();
+            return true;
+          });
+    expect: {regex: ["(?i)governance|usage (limit|unit)|4,?000"]}

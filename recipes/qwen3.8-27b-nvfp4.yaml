@@ -1,0 +1,61 @@
+# Challenger: Qwen3.8-27B NVFP4. Dense 27B, so every token reads all the weights. The
+# question this recipe answers is whether that costs too much decode speed against the
+# A3B incumbent, and whether speculation buys it back.
+# Flags follow official-recipes/qwen3.8/qwen3.8-27b-fp8-mtp-vllm.yaml (which already runs
+# tensor_parallel 1 on a Spark), with NVIDIA's NVFP4 checkpoint and a 128K window.
+# The NVFP4 checkpoint keeps its MTP head (checked: 15 mtp.* tensors, 1 MTP layer).
+# Architecture: 64 layers, 3 Gated DeltaNet blocks per 1 full-attention block, 4 KV heads.
+# Multimodal checkpoint: the vision tower loads even for text-only use.
+# Twins: -nomtp (no speculation), -dflash2 (external drafter).
+recipe_version: "2"
+model: nvidia/Qwen3.8-27B-NVFP4
+model_revision: 482ca0f3832238542f8f5295dde86b5f22711d80
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:20260918@sha256:1b0be62c1ccb37f738746cd8fbcec73b46f0c283082a6d46aebf9f19b5747563
+max_nodes: 1
+
+metadata:
+  description: Qwen3.8-27B NVFP4 (dense hybrid), MTP on, eugr nightly 2026-09-18.
+  maintainer: blaine
+  category: agent
+  model_dtype: nvfp4
+  kv_dtype: fp8
+
+defaults:
+  port: 8001
+  host: 0.0.0.0
+  served_model_name: qwen3.8-27b
+  tensor_parallel: 1
+  gpu_memory_utilization: 0.40        # lab slot. Exclusive mode: -o gpu_memory_utilization=0.80
+  max_model_len: 131072
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  kv_cache_dtype: fp8
+  attention_backend: flashinfer
+  load_format: instanttensor          # both upstream recipes use it on this image. Fallback: -o load_format=auto
+  mm_encoder_tp_mode: data
+  tool_call_parser: qwen3_coder       # NVIDIA's card and the official recipe. eugr's recipe uses qwen3_xml.
+  reasoning_parser: qwen3
+  speculative_config: '{"method":"mtp","num_speculative_tokens":3}'
+
+command: |
+  vllm serve {model} \
+    --revision {model_revision} \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    -tp {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --attention-backend {attention_backend} \
+    --load-format {load_format} \
+    --mm-encoder-tp-mode {mm_encoder_tp_mode} \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser {reasoning_parser} \
+    --speculative-config '{speculative_config}' \
+    --trust-remote-code

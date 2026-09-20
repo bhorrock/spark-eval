@@ -1,0 +1,61 @@
+# Challenger: Nemotron-3-Nano 30B-A3B NVFP4 on the eugr nightly image.
+# Adapted from recipe-registry experimental-recipes/eugr-vllm/nemotron-3-nano-nvfp4-vllm.yaml.
+#
+# Differences from upstream, and why:
+#  - Upstream's mods/nemotron-nano does `wget .../resolve/main/nano_v3_reasoning_parser.py`
+#    at launch. That is unpinned and needs network. The parser is a file in the model repo,
+#    so this recipe resolves it from the HF cache at the pinned revision instead, the same
+#    way the Granite recipe loads its tool parser. No mod needed.
+#  - Image pinned to the 2026-09-18 nightly by digest (upstream tracks :latest).
+#  - 128K window, max_num_seqs 8, lab-slot utilization, to match the other recipes.
+# Hybrid Mamba-2 + attention + MoE. Upstream sets no mamba flags; none added here.
+recipe_version: "2"
+model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4
+model_revision: 6efb4a2a1c1fa277ce7b3df7a1416255011b1c99
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:20260918@sha256:1b0be62c1ccb37f738746cd8fbcec73b46f0c283082a6d46aebf9f19b5747563
+max_nodes: 1
+
+metadata:
+  description: Nemotron-3-Nano 30B-A3B NVFP4, eugr nightly 2026-09-18, no spec decode.
+  maintainer: blaine
+  category: agent
+  model_dtype: nvfp4
+  kv_dtype: fp8
+
+defaults:
+  port: 8001
+  host: 0.0.0.0
+  served_model_name: nemotron-3-nano-30b-a3b
+  tensor_parallel: 1
+  gpu_memory_utilization: 0.40        # lab slot. Exclusive mode: -o gpu_memory_utilization=0.80
+  max_model_len: 131072
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  kv_cache_dtype: fp8
+  moe_backend: cutlass                # upstream's choice on this image. marlin is the fallback.
+  load_format: fastsafetensors
+  tool_call_parser: qwen3_coder
+  reasoning_parser: nano_v3
+  reasoning_parser_file: nano_v3_reasoning_parser.py
+
+command: |
+  vllm serve {model} \
+    --revision {model_revision} \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    -tp {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --kv-cache-dtype {kv_cache_dtype} \
+    --moe-backend {moe_backend} \
+    --load-format {load_format} \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser {tool_call_parser} \
+    --reasoning-parser-plugin "$(python3 -c 'import sys, huggingface_hub as h; print(h.hf_hub_download(sys.argv[1], sys.argv[2], revision=sys.argv[3]))' {model} {reasoning_parser_file} {model_revision})" \
+    --reasoning-parser {reasoning_parser} \
+    --trust-remote-code

@@ -1,0 +1,18 @@
+# Written before testing, so the result cannot bend the rule.
+
+# Absolute floors. A gate fails, and the run stops, when a candidate misses one.
+floors:
+  smoke:   {min_pass_rate: 1.0}
+  tools:   {min_pass_rate: 0.85, max_malformed_rate: 0.02}   # checked at every context length
+  longctx: {min_pass_rate: 0.80}
+  quality: {max_error_rate: 0.0}                              # quality is judged against the incumbent below
+
+# Relative rules, used by `spark-eval compare`. Deltas are candidate minus incumbent.
+versus_incumbent:
+  tools:   {min_pass_rate_delta: -0.03}
+  longctx: {min_pass_rate_delta: -0.05}
+  quality: {min_pass_rate_delta: 0.0}
+  perf:
+    cell: {input_tokens: 16000, concurrency: 4}
+    max_ttft_p95_ratio: 1.15
+    min_aggregate_output_tps_ratio: 0.85

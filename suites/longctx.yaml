@@ -1,0 +1,46 @@
+# Gate 4. Retrieval from a long prompt. `needles` go into the filler at the given
+# depth (0 = start, 1 = end). Context sizes come from --longctx-contexts.
+defaults: {temperature: 0, max_tokens: 2048}
+
+tools:
+  get_record:
+    description: Load one NetSuite record by type and internal id.
+    parameters:
+      type: object
+      properties: {record_type: {type: string}, id: {type: integer}}
+      required: [record_type, id]
+
+cases:
+  - id: needle_early
+    needles: [{depth: 0.05, text: "Deployment fact: the rollback token for the Hedberg integration is PLUM-7741-KESTREL."}]
+    messages: [{role: user, content: "What is the rollback token for the Hedberg integration? Reply with the token only."}]
+    expect: {contains: ["PLUM-7741-KESTREL"]}
+
+  - id: needle_middle
+    needles: [{depth: 0.5, text: "Deployment fact: the staging account id is 5519032_SB2."}]
+    messages: [{role: user, content: "What is the staging account id? Reply with the id only."}]
+    expect: {contains: ["5519032_SB2"]}
+
+  - id: needle_late
+    needles: [{depth: 0.95, text: "Deployment fact: saved search customsearch_stc_ack_queue is owned by role 1047."}]
+    messages: [{role: user, content: "Which role owns customsearch_stc_ack_queue? Reply with the number only."}]
+    expect: {contains: ["1047"]}
+
+  - id: three_needles_combined
+    needles:
+      - {depth: 0.15, text: "Budget fact: the March allocation was 1200 units."}
+      - {depth: 0.55, text: "Budget fact: the April allocation was 850 units."}
+      - {depth: 0.85, text: "Budget fact: the May allocation was 430 units."}
+    messages: [{role: user, content: "Add the March, April and May allocations from the notes. Reply with the total only."}]
+    expect: {contains: ["2480"]}
+
+  - id: absent_fact_not_invented
+    needles: [{depth: 0.4, text: "Deployment fact: the production account id is 5519032."}]
+    messages: [{role: user, content: "What is the rollback token for the Oracle Fusion integration? If the notes do not say, reply exactly: NOT IN NOTES."}]
+    expect: {contains: ["NOT IN NOTES"]}
+
+  - id: needle_feeds_tool_call
+    tools: [get_record]
+    needles: [{depth: 0.6, text: "Escalation fact: the disputed vendor bill has internal id 770123."}]
+    messages: [{role: user, content: "Load the disputed vendor bill mentioned in the notes."}]
+    expect: {tool_call: {name: get_record, args: {id: 770123}}}

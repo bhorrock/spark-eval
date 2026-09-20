@@ -1,0 +1,101 @@
+# Gate 2. Protocol checks. Every case must pass. A failure here is almost
+# always a serving flag (chat template, tool parser, reasoning parser), not the model.
+defaults: {temperature: 0, max_tokens: 1024}
+
+tools:
+  get_record:
+    description: Load one NetSuite record by type and internal id.
+    parameters:
+      type: object
+      properties:
+        record_type: {type: string}
+        id: {type: integer}
+      required: [record_type, id]
+
+cases:
+  - id: plain_answer
+    messages: [{role: user, content: "What is 17 * 3? Reply with the number only."}]
+    expect: {contains: ["51"], finish_reason: stop}
+
+  - id: system_prompt_obeyed
+    messages:
+      - {role: system, content: "End every reply with the token ZXQ-END."}
+      - {role: user, content: "Name one prime number."}
+    expect: {contains: ["ZXQ-END"]}
+
+  - id: multi_turn_memory
+    messages:
+      - {role: user, content: "My deploy target is called karlaak-staging. Remember it."}
+      - {role: assistant, content: "Noted."}
+      - {role: user, content: "What is my deploy target called?"}
+    expect: {contains: ["karlaak-staging"]}
+
+  - id: streaming_answer
+    stream: true
+    messages: [{role: user, content: "Count from 1 to 5, comma separated."}]
+    expect: {regex: ["1,\\s*2,\\s*3,\\s*4,\\s*5"], finish_reason: stop}
+
+  - id: no_markup_leak
+    messages: [{role: user, content: "Think it through, then tell me which is larger, 9.11 or 9.9."}]
+    expect: {contains: ["9.9"], content_nonempty: true}
+
+  - id: max_tokens_respected
+    params: {max_tokens: 8}
+    messages: [{role: user, content: "Write a 300 word essay about rain."}]
+    expect: {finish_reason: length}
+
+  - id: json_mode
+    params: {response_format: {type: json_object}}
+    messages: [{role: user, content: "Return a JSON object with keys name (string) and ports (array of two integers)."}]
+    expect:
+      json_schema:
+        type: object
+        required: [name, ports]
+        properties: {name: {type: string}, ports: {type: array, items: {type: integer}}}
+
+  - id: json_schema_mode
+    params:
+      response_format:
+        type: json_schema
+        json_schema:
+          name: ticket
+          schema:
+            type: object
+            additionalProperties: false
+            required: [key, priority]
+            properties:
+              key: {type: string, pattern: "^STC-[0-9]+$"}
+              priority: {type: string, enum: [low, medium, high]}
+    messages: [{role: user, content: "Ticket STC-14338 is urgent. Emit it."}]
+    expect:
+      json_schema:
+        type: object
+        required: [key, priority]
+        properties: {key: {const: "STC-14338"}, priority: {enum: [low, medium, high]}}
+
+  - id: single_tool_call
+    tools: [get_record]
+    messages: [{role: user, content: "Load sales order 4412."}]
+    expect: {tool_call: {name: get_record, args: {id: 4412}}, finish_reason: tool_calls}
+
+  - id: single_tool_call_streamed
+    stream: true
+    tools: [get_record]
+    messages: [{role: user, content: "Load customer 907."}]
+    expect: {tool_call: {name: get_record, args: {id: 907}}, finish_reason: tool_calls}
+
+  - id: tool_result_consumed
+    tools: [get_record]
+    messages:
+      - {role: user, content: "What is the status of sales order 4412?"}
+      - role: assistant
+        content: ""
+        tool_calls: [{id: call_1, type: function, function: {name: get_record, arguments: '{"record_type": "salesorder", "id": 4412}'}}]
+      - {role: tool, tool_call_id: call_1, content: '{"id": 4412, "status": "Pending Fulfillment", "total": 1820.5}'}
+    expect: {contains: ["Pending Fulfillment"], no_tool_call: true}
+
+  - id: tool_choice_none
+    tools: [get_record]
+    params: {tool_choice: none}
+    messages: [{role: user, content: "Load sales order 4412."}]
+    expect: {no_tool_call: true}
